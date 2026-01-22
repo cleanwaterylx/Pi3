@@ -6,6 +6,7 @@ model:
     decoder_size: large
     load_vggt: true
     freeze_encoder: true
+    freeze_decoder: true
     use_global_points: false
     train_conf: false
     num_dec_blk_not_to_checkpoint: 4
@@ -13,18 +14,18 @@ model:
 
 loss:
     train_loss: 
-        _target_: pi3.models.loss.Pi3Loss
+        _target_: pi3.models.loss.Pi3Loss_Cam
         train_conf: false
 
     test_loss:
-        _target_: pi3.models.loss.Pi3Loss
+        _target_: pi3.models.loss.Pi3Loss_Cam
         train_conf: false
 
 train:
     num_workers: 16
     batch_size: 1              # not use, dynamic batch size
     num_epoch: 80
-    iters_per_epoch: 800
+    iters_per_epoch: 4000
 
     print_freq: 40
     base_seed: 666
@@ -37,7 +38,8 @@ train:
     # Training config
     gradient_accumulation_steps: 1
     clip_grad: 1.0
-    clip_loss: 10
+    # clip_loss: 10
+    clip_loss: 100
     
     seed: 42
     resume: null

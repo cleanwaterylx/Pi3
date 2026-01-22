@@ -21,6 +21,8 @@ ckpts
 /configs/data/full.yaml
 *_check/
 /utils/utils_ceph.py
+/pair_data
+/test_dataset_output
 
 resize_demo_imgs.py
 img_dir_to_video.py

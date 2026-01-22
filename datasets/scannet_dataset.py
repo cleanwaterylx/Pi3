@@ -30,9 +30,10 @@ class ScannetDataset(BaseDataset):
 
         self.sequences = os.listdir(data_root)
         if mode == 'train':
-            self.sequences = [seq for seq in self.sequences if int(seq.split('_')[0][5:]) <= 660]
+            # self.sequences = [seq for seq in self.sequences if int(seq.split('_')[0][5:]) <= 660] # train on scans 0000-0660
+            self.sequences = [seq for seq in self.sequences if int(seq.split('_')[0][5:]) <= 60]
         else:
-            self.sequences = [seq for seq in self.sequences if int(seq.split('_')[0][5:]) > 660]
+            self.sequences = [seq for seq in self.sequences if int(seq.split('_')[0][5:]) > 60]
 
         if self.verbose:
             print(f'[{self.dataset_label}] Sequences of {self.dataset_label} dataset:', self.sequences)
@@ -133,7 +134,7 @@ class ScannetDataset(BaseDataset):
 
             rgb_image = np.array(Image.open(impath).resize((640, 480), resample=lanczos))
 
-            depthmap = Image.open(disppath).astype(np.float32) / 1000.
+            depthmap = np.array(Image.open(disppath)).astype(np.float32) / 1000.0
 
             rgb_image, depthmap, intrinsic_ = self._crop_resize_if_necessary(
                 rgb_image, depthmap, intrinsic.copy(), resolution, rng=rng, info=impath)

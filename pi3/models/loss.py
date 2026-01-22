@@ -202,7 +202,7 @@ class CameraLoss(nn.Module):
         return R_err.mean()         # [0, 3.14]
     
     def forward(self, pred, gt, scale):
-        pred_pose = pred['camera_poses']
+        pred_pose = pred['camera_poses']   # [B, N, 4, 4]
         gt_pose = gt['camera_poses']
 
         B, N, _, _ = pred_pose.shape
@@ -213,16 +213,16 @@ class CameraLoss(nn.Module):
         pred_w2c = se3_inverse(pred_pose_align)
         gt_w2c = se3_inverse(gt_pose)
         
-        pred_w2c_exp = pred_w2c.unsqueeze(2)
-        pred_pose_exp = pred_pose_align.unsqueeze(1)
+        pred_w2c_exp = pred_w2c.unsqueeze(2)  # [B, N, 1, 4, 4]
+        pred_pose_exp = pred_pose_align.unsqueeze(1) # [B, 1, N, 4, 4]
         
         gt_w2c_exp = gt_w2c.unsqueeze(2)
         gt_pose_exp = gt_pose.unsqueeze(1)
         
-        pred_rel_all = torch.matmul(pred_w2c_exp, pred_pose_exp)
+        pred_rel_all = torch.matmul(pred_w2c_exp, pred_pose_exp)  # [B, N, N, 4, 4]
         gt_rel_all = torch.matmul(gt_w2c_exp, gt_pose_exp)
 
-        mask = ~torch.eye(N, dtype=torch.bool, device=pred_pose.device)
+        mask = ~torch.eye(N, dtype=torch.bool, device=pred_pose.device) # exclude self-comparison
 
         t_pred = pred_rel_all[..., :3, 3][:, mask, ...]
         R_pred = pred_rel_all[..., :3, :3][:, mask, ...]
@@ -319,14 +319,14 @@ class Pi3Loss(nn.Module):
         return pred
 
     def forward(self, pred, gt_raw):
-        gt = self.prepare_gt(gt_raw)
-        pred = self.normalize_pred(pred, gt)
+        gt = self.prepare_gt(gt_raw) # normlize gt 
+        pred = self.normalize_pred(pred, gt) # normalize pred
 
         final_loss = 0.0
         details = dict()
 
         # Local Point Loss
-        point_loss, point_loss_details, scale = self.point_loss(pred, gt)
+        point_loss, point_loss_details, scale = self.point_loss(pred, gt) # align gt and pred
         final_loss += point_loss
         details.update(point_loss_details)
 
@@ -337,3 +337,72 @@ class Pi3Loss(nn.Module):
 
         return final_loss, details
 
+class Pi3Loss_Cam(nn.Module):
+    def __init__(
+        self,
+        train_conf=False,
+    ):
+        super().__init__()
+        self.camera_loss = CameraLoss()
+    
+    def prepare_gt(self, gt):
+        poses = torch.stack([view['camera_pose'] for view in gt], dim=1)
+
+        dataset_names = gt[0]['dataset']
+
+        return dict(
+            imgs = torch.stack([view['img'] for view in gt], dim=1),
+            camera_poses=poses,
+            dataset_names=dataset_names
+        )
+    
+    def align_camera_pose_scale(self, pred, gt):
+        pred_poses = pred['camera_poses']   # [B, N, 4, 4]
+        gt_poses = gt['camera_poses']
+        # print(pred_poses.shape, gt_poses.shape)
+        # print(pred_poses[0], gt_poses[0])
+        # input()
+        B, N, _, _ = pred_poses.shape
+
+        pred_pose_align = pred_poses.clone()
+        
+        pred_w2c = se3_inverse(pred_poses)
+        gt_w2c = se3_inverse(gt_poses)
+        
+        pred_w2c_exp = pred_w2c.unsqueeze(2)  # [B, N, 1, 4, 4]
+        pred_pose_exp = pred_poses.unsqueeze(1) # [B, 1, N, 4, 4]
+        
+        gt_w2c_exp = gt_w2c.unsqueeze(2)
+        gt_pose_exp = gt_poses.unsqueeze(1)
+        
+        pred_rel_all = torch.matmul(pred_w2c_exp, pred_pose_exp)  # [B, N, N, 4, 4]
+        gt_rel_all = torch.matmul(gt_w2c_exp, gt_pose_exp)
+
+        mask = ~torch.eye(N, dtype=torch.bool, device=pred_poses.device) # exclude self-comparison
+
+        t_pred = pred_rel_all[..., :3, 3][:, mask, ...]
+        t_gt = gt_rel_all[..., :3, 3][:, mask, ...]
+
+        num = (t_pred * t_gt).sum(dim=(-2, -1))  # sum over all pairs & xyz
+        den = (t_pred ** 2).sum(dim=(-2, -1)) + 1e-8
+        scale = (num / den).clamp_min(1e-6)  # [B]
+
+        return scale
+
+
+    def forward(self, pred, gt_raw):
+        gt = self.prepare_gt(gt_raw)
+
+        final_loss = 0.0
+        details = dict()
+
+        with torch.no_grad():
+            scale = self.align_camera_pose_scale(pred, gt)
+
+        # Camera Loss
+        camera_loss, camera_loss_details = self.camera_loss(pred, gt, scale)
+        final_loss += camera_loss
+        # print('loss:', final_loss)
+        details.update(camera_loss_details)
+
+        return final_loss, details

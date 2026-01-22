@@ -30,6 +30,7 @@ class Pi3(nn.Module):
             decoder_size='large',
             load_vggt=True,
             freeze_encoder=True,
+            freeze_decoder=False,
             use_global_points=False,
             train_conf=False,
             num_dec_blk_not_to_checkpoint=4,
@@ -191,10 +192,15 @@ class Pi3(nn.Module):
             print('Freezing the encoder.')
             freeze_all_params([self.encoder])
 
+        if freeze_decoder:
+            print('Freezing the decoder point_decoder point_head register_token.')
+            freeze_all_params([self.decoder, self.point_decoder, self.point_head, self.register_token])
+
         self.num_dec_blk_not_to_checkpoint = num_dec_blk_not_to_checkpoint
 
         if ckpt is not None:
-            checkpoint = torch.load(ckpt, weights_only=False, map_location='cpu')
+            # checkpoint = torch.load(ckpt, weights_only=False, map_location='cpu')
+            checkpoint = load_file(ckpt)
 
             res = self.load_state_dict(checkpoint, strict=False)
             print(f'[Pi3] Load checkpoints from {ckpt}: {res}')

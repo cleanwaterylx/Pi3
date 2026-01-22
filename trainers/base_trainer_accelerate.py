@@ -269,6 +269,18 @@ class BaseTrainer:
 
                 self.log_all(log_stats, step=self.global_step)
 
+                # epoch-level TensorBoard logging
+                for k, v in train_stats.items():
+                    self.accelerator.log(
+                        {f"epoch/train_{k}": v},
+                        step=epoch
+                    )
+                for k, v in val_stats.items():
+                    self.accelerator.log(
+                        {f"epoch/val_{k}": v},
+                        step=epoch
+                    )
+
         total_time = time.time() - start_time
         total_time_str = str(datetime.timedelta(seconds=int(total_time)))
         self.log_info("Training time {}".format(total_time_str))

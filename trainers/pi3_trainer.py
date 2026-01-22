@@ -77,7 +77,14 @@ class Pi3Trainer(BaseTrainer):
                 dataset._set_resolutions(resolutions)
             
     def forward_batch(self, batch, mode='train'):
+        # for view in batch:
+        #     print(view['img'].shape)
         imgs = torch.stack([view['img'] for view in batch], dim=1)
+        # for b in batch:
+        #     print('Input image name:', b['label'][0])
+        #     print('Input image name:', b['camera_pose'][0])
+        # # print('Input image names:', name)
+        # print('Input image shape:', imgs.shape)
         pred = self.model(imgs)
 
         return [pred, batch]
