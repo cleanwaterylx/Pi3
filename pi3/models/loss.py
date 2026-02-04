@@ -241,6 +241,31 @@ class CameraLoss(nn.Module):
 
         return total_loss, dict(trans_loss=trans_loss, rot_loss=rot_loss)
 
+class ClassificationLoss(nn.Module):
+    def __init__(self):
+        super().__init__()
+    
+    def make_target(self, label):
+        # label: (B, N)
+        is_all_good = (label.sum(dim=1) == label.shape[1])
+        abnormal_idx = torch.argmin(label, dim=1)
+        target = torch.where(
+            is_all_good,
+            torch.full_like(abnormal_idx, fill_value=label.shape[1]),  # N
+            abnormal_idx
+        )
+        return target 
+    
+    def forward(self, pred, gt):
+        logits = pred['logits']  # [B, N+1]
+        labels = gt['pos_neg_pair_labels']  # [B, N], 1 for positive, 0 for negative
+
+        target = self.make_target(labels)  # [B]
+
+        loss = F.cross_entropy(logits, target)
+
+        return loss, dict(classification_loss=loss)
+
 # ---------------------------------------------------------------------------
 # Final Loss
 # ---------------------------------------------------------------------------
@@ -404,5 +429,37 @@ class Pi3Loss_Cam(nn.Module):
         final_loss += camera_loss
         # print('loss:', final_loss)
         details.update(camera_loss_details)
+
+        return final_loss, details
+
+class Pi3Loss_Classification(nn.Module):
+    def __init__(
+        self,
+        train_conf=False,
+    ):
+        super().__init__()
+        self.classification_loss = ClassificationLoss()
+    
+    def prepare_gt(self, gt):
+        labels = torch.stack([view['pos_neg_pair_label'] for view in gt], dim=1)
+
+        dataset_names = gt[0]['dataset']
+
+        return dict(
+            imgs = torch.stack([view['img'] for view in gt], dim=1),
+            pos_neg_pair_labels=labels,
+            dataset_names=dataset_names
+        )
+    
+    def forward(self, pred, gt_raw):
+        gt = self.prepare_gt(gt_raw)
+
+        final_loss = 0.0
+        details = dict()
+
+        # Classification Loss
+        classification_loss, classification_loss_details = self.classification_loss(pred, gt)
+        final_loss += classification_loss
+        details.update(classification_loss_details)
 
         return final_loss, details

@@ -7,8 +7,10 @@
 *.render*
 *.ply
 *.png
+*.so
 
 **/__pycache__/
+**/build/
 
 .vscode
 ckpts

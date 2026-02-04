@@ -5,6 +5,7 @@ import torch.nn as nn
 from functools import partial
 from torch.utils.checkpoint import checkpoint
 import torch.nn.functional as F
+import torch
    
 class TransformerDecoder(nn.Module):
     def __init__(
@@ -129,3 +130,44 @@ class ContextTransformerDecoder(nn.Module):
         out = self.linear_out(hidden)
 
         return out
+    
+class ClassificationHead(nn.Module):
+    """ 
+    Classification head for image-level classification
+    """
+
+    def __init__(self, dec_embed_dim):
+        super().__init__()
+        self.view_classifier = nn.Sequential(
+            nn.Linear(dec_embed_dim, dec_embed_dim // 2),
+            nn.ReLU(inplace=True),
+            nn.Linear(dec_embed_dim // 2, 1)
+        )
+
+        self.none_classifier = nn.Sequential(
+            nn.Linear(dec_embed_dim, dec_embed_dim // 2),
+            nn.ReLU(inplace=True),
+            nn.Linear(dec_embed_dim // 2, 1)
+        )
+
+    def forward(self, decout, N):
+        # classification decoder output: (B*N, num_register_tokens, dec_embed_dim)
+        BN, n, c = decout.shape
+        B = BN // N
+        
+        imgs_feat = decout.mean(dim=1)  # (B*N, dec_embed_dim)
+        imgs_feat = imgs_feat.view(B, N, c)  # (B, N, dec_embed_dim)
+        
+        logits_view = self.view_classifier(imgs_feat).squeeze(-1)  # (B, N)
+        logits_none = self.none_classifier(imgs_feat.mean(dim=1))  # (B, 1)
+        logits = torch.cat([logits_view, logits_none], dim=1)
+
+        # inference
+        # pred = logits.argmax(dim=1)
+
+        # if pred == N:
+        #     print("all views normal")
+        # else:
+        #     print(f"view {pred} is abnormal")
+
+        return logits

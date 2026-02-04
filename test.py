@@ -1,6 +1,9 @@
 from datasets.visymscenes_dataset import VisymScenesDataset
 import numpy as np
 import pickle
+import random
+import torch
+from tqdm import tqdm
 
 # dopp_pair_path = '/home/disk8/dopp_data/pairs_metadata/train_pairs_visym.npy'
 # dopp_pair = np.load(dopp_pair_path, allow_pickle=True)
@@ -23,13 +26,36 @@ import pickle
 
 # dataset = VisymScenesDataset(resolution=[518, 336], data_root='/home/disk8/dopp_data/visymscenes', mode='train', verbose=True)
 
+all_pairs = np.load('pair_data/test_pairs_visym_with_intrinsics.npy', allow_pickle=True)
+print(len(all_pairs))
+print(all_pairs[0])
+quit()
+
 all_pairs = []
-with open("pair_data/neg_pairs_with_intrinsics.pkl", "rb") as f:
+with open("all_pairs_test.pkl", "rb") as f:
     all_pairs = pickle.load(f)
 
-for idx, img in enumerate(all_pairs[0][4]):
-    print(img)
-    print(all_pairs[0][3][idx])
+new_all_pairs = []
+for pair in tqdm(all_pairs):
+    pair_0, pair_1, pair_2, binary, image_lists = pair
+    pair = (pair_0, pair_1, pair_2, binary.cpu().numpy(), image_lists)
+    new_all_pairs.append(pair)
+
+with open("all_pairs_test_1.pkl", "wb") as f:
+    pickle.dump(new_all_pairs, f)
+input()
+
+num_total = len(all_pairs)
+split_idx = int(0.8 * num_total)
+
+test_pairs = all_pairs[split_idx:]
+with open("pair_data/test_pairs_shuffled_with_intrinsics.pkl", "wb") as f:
+    pickle.dump(test_pairs, f)
+
+
+# for idx, img in enumerate(all_pairs[0][4]):
+#     print(img)
+#     print(all_pairs[0][3][idx])
 # print(all_pairs[0])
 # print(len(all_pairs[0][3]))
 

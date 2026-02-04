@@ -24,7 +24,7 @@ class cuRoPE2D_func (torch.autograd.Function):
     @staticmethod
     def backward(ctx, grad_res):
         positions, base, F0 = ctx.saved_tensors[0], ctx.saved_base, ctx.saved_F0
-        _kernels.rope_2d( grad_res, positions, base, -F0 )
+        _kernels.rope_2d( grad_res.contiguous(), positions, base, -F0 )
         ctx.mark_dirty(grad_res)
         return grad_res, None, None, None
 
@@ -36,5 +36,5 @@ class cuRoPE2D(torch.nn.Module):
         self.F0 = F0
 
     def forward(self, tokens, positions): 
-        cuRoPE2D_func.apply( tokens.transpose(1,2), positions, self.base, self.F0 )
+        cuRoPE2D_func.apply( tokens.transpose(1,2).contiguous(), positions, self.base, self.F0 )
         return tokens

@@ -2,7 +2,7 @@ import torch
 import argparse
 from pi3.utils.basic import load_images_as_tensor_from_list
 from pi3.utils.geometry import depth_edge
-from pi3.models.pi3 import Pi3
+from pi3.models.pi3_classification import Pi3
 import open3d as o3d
 import numpy as np
 import utils3d
@@ -10,15 +10,30 @@ import os
 from collections import defaultdict
 from tqdm import tqdm
 import pickle
+import random
 
 # batched test camera poses from visymscenes dopp pairs with pi3 model
 
+def class_to_binary(pred_class, N):
+    """
+    pred_class: LongTensor, shape (B,)
+                value in [0, N]  (N 表示 all good)
+    return:     LongTensor, shape (B, N)
+    """
+    B = pred_class.shape[0]
+    out = torch.ones(B, N, device=pred_class.device, dtype=torch.long)
+
+    mask = pred_class < N          # (B,)
+    out[mask, pred_class[mask]] = 0
+
+    return out
+
+
 if __name__ == '__main__':
     rng = np.random.default_rng(42)
-    dopp_pair_test_path = '/home/disk3_SSD/ylx/Pi3-train/pair_data/test_pairs_with_intrinsics.pkl'
     data_root='/home/disk8/dopp_data/visymscenes'
     dopp_pair = []
-    with open("pair_data/test_pairs_with_intrinsics.pkl", "rb") as f:
+    with open("pair_data/test_pairs_shuffled_with_intrinsics.pkl", "rb") as f:
         dopp_pair = pickle.load(f)
     print(f'Number of test DoppPairs: {len(dopp_pair)}')
 
@@ -55,7 +70,7 @@ if __name__ == '__main__':
     dtype = torch.bfloat16 if torch.cuda.get_device_capability()[0] >= 8 else torch.float16
     model = Pi3().to(device).eval()
     from safetensors.torch import load_file
-    weight = load_file('ckpts/model_epoch46.safetensors')
+    weight = load_file('ckpts/model_pi3_visymscenes_classification.safetensors')
     pi3_weight = load_file('ckpts/model.safetensors')
     #load conf weights from pi3_weight
     conf_decoder_weight = {
@@ -92,15 +107,16 @@ if __name__ == '__main__':
             with torch.no_grad():
                 with torch.amp.autocast('cuda', dtype=dtype):
                     res = model(images_tensor)
-            extrinsics = res['camera_poses'].cpu().numpy()  # [B, N, 4, 4] c2w
+            print(res['logits'].shape)
+            pred_class = res['logits'].argmax(dim=1)
+            binary = class_to_binary(pred_class, res['logits'].shape[1] - 1)
 
             # image_lists
             image_lists = [sublist for sublist in batch_image_lists]
-            pairs = [(pair[0], pair[1], pair[2], extrinsics[i], image_lists[i]) for i, pair in enumerate(batch_pair_info)] 
+            pairs = [(pair[0], pair[1], pair[2], binary[i], image_lists[i]) for i, pair in enumerate(batch_pair_info)] 
             # for i, pair in enumerate(pairs):    
-            #     if int(pair[2]) == 1:
-            #         print(pair[0], pair[1], pair[2], extrinsics[i], image_lists[i])
-            #         input()
+            #     print(pair[0], pair[1], pair[2], binary[i], image_lists[i])
+            #     input()
             
             all_pairs.extend(pairs)
             if len(all_pairs) >= save_every:
