@@ -131,6 +131,48 @@ class ContextTransformerDecoder(nn.Module):
 
         return out
     
+# class ClassificationHead(nn.Module):
+#     """ 
+#     Classification head for image-level classification
+#     """
+
+#     def __init__(self, dec_embed_dim):
+#         super().__init__()
+#         self.view_classifier = nn.Sequential(
+#             nn.Linear(dec_embed_dim, dec_embed_dim // 2),
+#             nn.ReLU(inplace=True),
+#             nn.Linear(dec_embed_dim // 2, 1)
+#         )
+
+#         self.none_classifier = nn.Sequential(
+#             nn.Linear(dec_embed_dim, dec_embed_dim // 2),
+#             nn.ReLU(inplace=True),
+#             nn.Linear(dec_embed_dim // 2, 1)
+#         )
+
+#     def forward(self, decout, N):
+#         # classification decoder output: (B*N, num_register_tokens, dec_embed_dim)
+#         BN, n, c = decout.shape
+#         B = BN // N
+        
+#         imgs_feat = decout.mean(dim=1)  # (B*N, dec_embed_dim)
+#         imgs_feat = imgs_feat.view(B, N, c)  # (B, N, dec_embed_dim)
+        
+#         logits_view = self.view_classifier(imgs_feat).squeeze(-1)  # (B, N)
+#         logits_none = self.none_classifier(imgs_feat.mean(dim=1))  # (B, 1)
+#         logits = torch.cat([logits_view, logits_none], dim=1)
+
+#         # inference
+#         # pred = logits.argmax(dim=1)
+
+#         # if pred == N:
+#         #     print("all views normal")
+#         # else:
+#         #     print(f"view {pred} is abnormal")
+
+#         return logits
+
+
 class ClassificationHead(nn.Module):
     """ 
     Classification head for image-level classification
@@ -138,36 +180,37 @@ class ClassificationHead(nn.Module):
 
     def __init__(self, dec_embed_dim):
         super().__init__()
-        self.view_classifier = nn.Sequential(
+        self.classifier = nn.Sequential(
             nn.Linear(dec_embed_dim, dec_embed_dim // 2),
             nn.ReLU(inplace=True),
             nn.Linear(dec_embed_dim // 2, 1)
         )
 
-        self.none_classifier = nn.Sequential(
-            nn.Linear(dec_embed_dim, dec_embed_dim // 2),
-            nn.ReLU(inplace=True),
-            nn.Linear(dec_embed_dim // 2, 1)
-        )
 
-    def forward(self, decout, N):
+    def forward(self, decout, N, patch_start_idx, temp=32.0):
         # classification decoder output: (B*N, num_register_tokens, dec_embed_dim)
         BN, n, c = decout.shape
         B = BN // N
         
-        imgs_feat = decout.mean(dim=1)  # (B*N, dec_embed_dim)
-        imgs_feat = imgs_feat.view(B, N, c)  # (B, N, dec_embed_dim)
+        # ---- 1. 分离 register 和 patch ----
+        reg = decout[:, :patch_start_idx, :]       # (B*N, K, C)
+        patch = decout[:, patch_start_idx:, :]     # (B*N, P, C)
         
-        logits_view = self.view_classifier(imgs_feat).squeeze(-1)  # (B, N)
-        logits_none = self.none_classifier(imgs_feat.mean(dim=1))  # (B, 1)
-        logits = torch.cat([logits_view, logits_none], dim=1)
+        # ---- 2. 对 patch 做 attention guided by reg ----
+        # 先得到 reg_mean 做 query
+        reg_mean = reg.mean(dim=1, keepdim=True)   # (B*N, 1, C)
 
-        # inference
-        # pred = logits.argmax(dim=1)
+        # attention score: patch · reg_mean^T / temp
+        attn_score = torch.matmul(patch, reg_mean.transpose(1, 2)) / temp   # (B*N, P, 1)
+        attn_weight = torch.softmax(attn_score, dim=1)                      # (B*N, P, 1)
 
-        # if pred == N:
-        #     print("all views normal")
-        # else:
-        #     print(f"view {pred} is abnormal")
+        patch_pool = (attn_weight * patch).sum(dim=1)                        # (B*N, C)
 
-        return logits
+        # ---- 3. 合并 reg + patch_pool ----
+        feat = reg_mean.squeeze(1) + patch_pool   # (B*N, C)
+        feat = feat.view(B, N, c)                # (B, N, C)
+
+        # ---- 4. 分类 ----
+        logits = self.classifier(feat).squeeze(-1)  # (B, N)
+
+        return logits, feat

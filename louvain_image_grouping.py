@@ -92,7 +92,7 @@ if __name__ == '__main__':
     name = '/home/disk3_SSD/ylx/dataset_pi3_classification/26'
     parse_image_map_file(f'{name}/sparse/image_map.txt')
     # input()
-    G = parse_image_pair_file(f'{name}/sparse/image_pair_inliers_relpose.txt')
+    G = parse_image_pair_file(f'{name}/sparse/image_pair_inliers_relpose_final.txt')
     communitys = community_louvain.best_partition(G, random_state=42)
 
     clusters = defaultdict(list)

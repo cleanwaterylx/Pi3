@@ -245,26 +245,50 @@ class ClassificationLoss(nn.Module):
     def __init__(self):
         super().__init__()
     
-    def make_target(self, label):
-        # label: (B, N)
-        is_all_good = (label.sum(dim=1) == label.shape[1])
-        abnormal_idx = torch.argmin(label, dim=1)
-        target = torch.where(
-            is_all_good,
-            torch.full_like(abnormal_idx, fill_value=label.shape[1]),  # N
-            abnormal_idx
-        )
-        return target 
+    # def make_target(self, label):
+    #     # label: (B, N)
+    #     is_all_good = (label.sum(dim=1) == label.shape[1])
+    #     abnormal_idx = torch.argmin(label, dim=1)
+    #     target = torch.where(
+    #         is_all_good,
+    #         torch.full_like(abnormal_idx, fill_value=label.shape[1]),  # N
+    #         abnormal_idx
+    #     )
+    #     return target 
     
     def forward(self, pred, gt):
-        logits = pred['logits']  # [B, N+1]
+        logits = pred['logits']  # [B, N] 
         labels = gt['pos_neg_pair_labels']  # [B, N], 1 for positive, 0 for negative
 
-        target = self.make_target(labels)  # [B]
+        # target = self.make_target(labels)  # [B]
 
-        loss = F.cross_entropy(logits, target)
+        loss = F.binary_cross_entropy_with_logits(logits, labels.float())
 
         return loss, dict(classification_loss=loss)
+    
+class SupconLoss(nn.Module):
+    def __init__(self, temp=0.1):
+        super().__init__()
+        self.temp = temp
+    
+    def forward(self, pred, gt):
+        feat = pred['feat']  # [B, N, C]
+        labels = gt['pos_neg_pair_labels']  # [B, N], 1 for positive, 0 for negative
+
+        B, N, C = feat.shape
+        z = F.normalize(feat.reshape(B*N, C), dim=1)  # (B*N, C)
+        y = labels.reshape(-1)                        # (B*N,)
+
+        sim = torch.matmul(z, z.T) / self.temp             # (B*N, B*N)
+        mask = y.unsqueeze(0) == y.unsqueeze(1)
+        mask.fill_diagonal_(0)
+
+        exp_sim = torch.exp(sim)
+        log_prob = sim - torch.log(exp_sim.sum(dim=1, keepdim=True) + 1e-8)
+        loss = -(mask * log_prob).sum(dim=1) / (mask.sum(dim=1) + 1e-8)
+        
+        loss = loss.mean()
+        return loss, dict(supcon_loss=loss)
 
 # ---------------------------------------------------------------------------
 # Final Loss
@@ -439,6 +463,7 @@ class Pi3Loss_Classification(nn.Module):
     ):
         super().__init__()
         self.classification_loss = ClassificationLoss()
+        self.supcon_loss = SupconLoss()
     
     def prepare_gt(self, gt):
         labels = torch.stack([view['pos_neg_pair_label'] for view in gt], dim=1)
@@ -459,7 +484,9 @@ class Pi3Loss_Classification(nn.Module):
 
         # Classification Loss
         classification_loss, classification_loss_details = self.classification_loss(pred, gt)
-        final_loss += classification_loss
+        supcon_loss, supcon_loss_details = self.supcon_loss(pred, gt)
+        final_loss += classification_loss + 0.1 * supcon_loss
         details.update(classification_loss_details)
+        details.update(supcon_loss_details)
 
         return final_loss, details

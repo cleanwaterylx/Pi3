@@ -7,7 +7,7 @@ from tqdm import tqdm
 n = 23781
 
 dopp_pair = np.load(f'/home/disk8/dopp_data/pairs_metadata/test_pairs_visym.npy', allow_pickle=True)
-dopp_pair = np.concatenate([dopp_pair, dopp_pair[:, [1, 0, 2, 3]]], axis=0)
+# dopp_pair = np.concatenate([dopp_pair, dopp_pair[:, [1, 0, 2, 3]]], axis=0)
 
 data_root = '/home/disk8/dopp_data/visymscenes'
 pair_with_intrinsics = []

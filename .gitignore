@@ -25,6 +25,9 @@ ckpts
 /utils/utils_ceph.py
 /pair_data
 /test_dataset_output
+/test_dataset_imgs
+
+*.npy
 
 resize_demo_imgs.py
 img_dir_to_video.py
