@@ -8,6 +8,7 @@ from tqdm import tqdm
 from datasets.base.base_dataset import BaseDataset
 import pickle
 import copy
+import random
 
 class VisymScenesDataset(BaseDataset):
     def __init__(
@@ -55,36 +56,45 @@ class VisymScenesDataset(BaseDataset):
     
     def _get_views(self, index, resolution, rng):
         image_0_relative_path, image_1_relative_path, pos_neg_pair_label, intrinsics = self.dopp_pair[index]
+        pos_neg_pair_label = int(pos_neg_pair_label)
         scene1 = os.path.join(*image_0_relative_path.split('/')[:3])  # get the scene from the first image path
         scene2 = os.path.join(*image_1_relative_path.split('/')[:3])
-        base_path = os.path.join(self.data_root, scene1)
-        imgs = sorted([file for file in os.listdir(base_path) if file.endswith('.jpg')])
+        base_path1 = os.path.join(self.data_root, scene1)
+        base_path2 = os.path.join(self.data_root, scene2)
+        imgs_1 = sorted([file for file in os.listdir(base_path1) if file.endswith('.jpg')])
+        imgs_2 = sorted([file for file in os.listdir(base_path2) if file.endswith('.jpg')])
         # print(scene)
         # print(len(imgs))
         # print(imgs[0], imgs[1])
 
         image_0_name = image_0_relative_path.split('/')[-1]
         image_1_name = image_1_relative_path.split('/')[-1]
-        idx = imgs.index(image_0_name)
+        idx_1 = imgs_1.index(image_0_name)
+        idx_2 = imgs_2.index(image_1_name)
         # print(image_0_name)
         # print('Image 0 index in the sequence:', idx)
 
         #  set image_0 as anchor ,idx random +- 5
         # todo random step or sample 
-        step = (self.frame_num - 2) // 2
-        idxs = list(range(max(0, idx - step), min(len(imgs), idx + step + 1)))
+        step = (self.frame_num - 4) // 4
+        idxs_1 = list(range(max(0, idx_1 - step), min(len(imgs_1), idx_1 + step + 1)))
+        idxs_2 = list(range(max(0, idx_2 - step), min(len(imgs_2), idx_2 + step + 1)))
         # print(self.frame_num)
+        # print(max(0, idx_1 - step), min(len(imgs_1), idx_1 + step))
+        # print('idx_1:', idx_1, 'idx_2:', idx_2)
+        # print('idxs_1:', idxs_1, 'idxs_2:', idxs_2)
         # print(len(idxs))
 
         self.this_views_info = dict(
             scene=scene1,
-            idxs=idxs,
+            idxs=idxs_1 + idxs_2,
         )
 
-
+        label = random.randint(0, 1)
+        
         views = []
-        for i, idx in enumerate(idxs):
-            img_path = os.path.join(base_path, imgs[idx])
+        for i, idx_1 in enumerate(idxs_1):
+            img_path = os.path.join(base_path1, imgs_1[idx_1])
             
             rgb_image = np.array(Image.open(img_path))
             # todo crop image not PIL.Image.Image 
@@ -95,39 +105,57 @@ class VisymScenesDataset(BaseDataset):
 
             views.append(dict(
                 img=rgb_image,
-                pos_neg_pair_label = 1,
+                pos_neg_pair_label = 1 if pos_neg_pair_label else label,
                 dataset=self.dataset_label,
-                label=imgs[idx],
-                instance=str(idx)
+                label=imgs_1[idx_1],
+                instance=str(idx_1)
+            ))
+        
+        for i, idx_2 in enumerate(idxs_2):
+            img_path = os.path.join(base_path2, imgs_2[idx_2])
+            
+            rgb_image = np.array(Image.open(img_path))
+            # todo crop image not PIL.Image.Image 
+            # depthmap fill dummy
+            depthmap = np.ones((rgb_image.shape[0], rgb_image.shape[1]),dtype=np.float32)
+            rgb_image, depthmap, intrinsic_ = self._crop_resize_if_necessary(
+                rgb_image, depthmap, intrinsics[1].copy(), resolution, rng=rng, info=img_path)
+
+            views.append(dict(
+                img=rgb_image,
+                pos_neg_pair_label = 1 if pos_neg_pair_label else 1 - label,   # different from the first image
+                dataset=self.dataset_label,
+                label=imgs_2[idx_2],
+                instance=str(idx_2)
             ))
         while len(views) < self.frame_num:
             views.append(copy.deepcopy(views[-1]))   #todo  choose one view pad to ensure enough views 
         
-        if int(pos_neg_pair_label) == 1:
-            rgb_image = np.array(Image.open(os.path.join(self.data_root, image_1_relative_path)))
-            depthmap = np.ones((rgb_image.shape[0], rgb_image.shape[1]),dtype=np.float32)
-            rgb_image, depthmap, intrinsic_ = self._crop_resize_if_necessary(
-                rgb_image, depthmap, intrinsics[1].copy(), resolution, rng=rng, info=os.path.join(self.data_root, image_1_relative_path))
-            views.append(dict(
-                img=rgb_image,
-                pos_neg_pair_label = 1,
-                dataset=self.dataset_label,
-                label=os.path.join(self.data_root, image_1_relative_path),
-                instance=str(idx)
-            ))
+        # if int(pos_neg_pair_label) == 1:
+        #     rgb_image = np.array(Image.open(os.path.join(self.data_root, image_1_relative_path)))
+        #     depthmap = np.ones((rgb_image.shape[0], rgb_image.shape[1]),dtype=np.float32)
+        #     rgb_image, depthmap, intrinsic_ = self._crop_resize_if_necessary(
+        #         rgb_image, depthmap, intrinsics[1].copy(), resolution, rng=rng, info=os.path.join(self.data_root, image_1_relative_path))
+        #     views.append(dict(
+        #         img=rgb_image,
+        #         pos_neg_pair_label = 1,
+        #         dataset=self.dataset_label,
+        #         label=os.path.join(self.data_root, image_1_relative_path),
+        #         instance=str(idx_1)
+        #     ))
 
-        if int(pos_neg_pair_label) == 0:
-            rgb_image = np.array(Image.open(os.path.join(self.data_root, image_1_relative_path)))
-            depthmap = np.ones((rgb_image.shape[0], rgb_image.shape[1]),dtype=np.float32)
-            rgb_image, depthmap, intrinsic_ = self._crop_resize_if_necessary(
-                rgb_image, depthmap, intrinsics[1].copy(), resolution, rng=rng, info=os.path.join(self.data_root, image_1_relative_path))
-            views.append(dict(
-                img=rgb_image,
-                pos_neg_pair_label = 0,
-                dataset=self.dataset_label,
-                label=os.path.join(self.data_root, image_1_relative_path),
-                instance=str(idx)
-            ))
+        # if int(pos_neg_pair_label) == 0:
+        #     rgb_image = np.array(Image.open(os.path.join(self.data_root, image_1_relative_path)))
+        #     depthmap = np.ones((rgb_image.shape[0], rgb_image.shape[1]),dtype=np.float32)
+        #     rgb_image, depthmap, intrinsic_ = self._crop_resize_if_necessary(
+        #         rgb_image, depthmap, intrinsics[1].copy(), resolution, rng=rng, info=os.path.join(self.data_root, image_1_relative_path))
+        #     views.append(dict(
+        #         img=rgb_image,
+        #         pos_neg_pair_label = 0,
+        #         dataset=self.dataset_label,
+        #         label=os.path.join(self.data_root, image_1_relative_path),
+        #         instance=str(idx_1)
+        #     ))
         
         return views   
 

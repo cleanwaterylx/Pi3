@@ -2,7 +2,7 @@ import torch
 import argparse
 from pi3.utils.basic import load_images_as_tensor, write_ply, load_images_as_tensor_from_list
 from pi3.utils.geometry import depth_edge
-from pi3.models.pi3_classification import Pi3
+from pi3.models.pi3_classification_no_multi_level_feature_supconloss import Pi3
 import open3d as o3d
 import numpy as np
 import utils3d
@@ -50,7 +50,7 @@ if __name__ == '__main__':
     dtype = torch.bfloat16 if torch.cuda.get_device_capability()[0] >= 8 else torch.float16
     model = Pi3().to(device).eval()
     from safetensors.torch import load_file
-    weight = load_file('ckpts/model_pi3_visymscenes_classification.safetensors')
+    weight = load_file('ckpts/pi3_visymscenes_classification_no_multi_level_feature.safetensors')
     pi3_weight = load_file('ckpts/model.safetensors')
     #load conf weights from pi3_weight
     conf_decoder_weight = {

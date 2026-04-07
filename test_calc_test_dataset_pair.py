@@ -2,7 +2,7 @@ import torch
 import argparse
 from pi3.utils.basic import load_images_as_tensor_from_list
 from pi3.utils.geometry import depth_edge
-from pi3.models.pi3_classification_multi_level_feature_supconloss import Pi3
+from pi3.models.pi3_classification_one_view_one_labal import Pi3
 import open3d as o3d
 import numpy as np
 import utils3d
@@ -107,9 +107,39 @@ if __name__ == '__main__':
             
     # quit()
 
-    # 1. Prepare input data
-    buckets = defaultdict(list)
+
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        
+    
+    # 2. Prepare model
+    print(f"Loading model...")
+    device = torch.device('cuda')
+    dtype = torch.bfloat16 if torch.cuda.get_device_capability()[0] >= 8 else torch.float16
+    model = Pi3().to(device).eval()
+    from safetensors.torch import load_file
+    weight = load_file('ckpts/pi3_visymscenes_classification_one_view_one_label.safetensors')
+    pi3_weight = load_file('ckpts/model.safetensors')
+    #load conf weights from pi3_weight
+    conf_decoder_weight = {
+        k.replace('model.conf_decoder.', ''): pi3_weight[k] for k in pi3_weight.keys() if k.startswith('conf_decoder.')
+    }
+    conf_head_weight = {
+        k.replace('model.conf_head.', ''): pi3_weight[k] for k in pi3_weight.keys() if k.startswith('conf_head.')
+    }
+    weight.update(conf_decoder_weight)
+    weight.update(conf_head_weight)
+    
+    model.load_state_dict(weight)
+    
+    # 3. batched process each bucket
+    batch_size = 10
+    all_pairs = []
+    part = 1
+    save_every = 5000
+    
+    gts = []
+    preds = []
+    false_pair = []
     for pair in tqdm(dopp_pair):
         image_0_relative_path, image_1_relative_path, pos_neg_pair_label, intrinsics = pair
         pos_neg_pair_label = int(pos_neg_pair_label)
@@ -137,73 +167,41 @@ if __name__ == '__main__':
         idxs_2 = list(range(max(0, idx_2 - step), min(len(imgs_2), idx_2 + step + 1)))
 
         selected_imgs = [os.path.join(base_path1, imgs_1[j]) for j in idxs_1]
+        labels = [1] * len(selected_imgs)
         selected_imgs += [os.path.join(base_path2, imgs_2[j]) for j in idxs_2]
-
-        N = len(selected_imgs)
+        labels += [1 if pos_neg_pair_label else 0] * len(idxs_2)
         
-        buckets[N].append((selected_imgs, (image_0_relative_path, image_1_relative_path, pos_neg_pair_label, intrinsics)))
-    
-    # 2. Prepare model
-    print(f"Loading model...")
-    device = torch.device('cuda')
-    dtype = torch.bfloat16 if torch.cuda.get_device_capability()[0] >= 8 else torch.float16
-    model = Pi3().to(device).eval()
-    from safetensors.torch import load_file
-    weight = load_file('ckpts/pi3_visymscenes_classification_multi_level_feature.safetensors')
-    pi3_weight = load_file('ckpts/model.safetensors')
-    #load conf weights from pi3_weight
-    conf_decoder_weight = {
-        k.replace('model.conf_decoder.', ''): pi3_weight[k] for k in pi3_weight.keys() if k.startswith('conf_decoder.')
-    }
-    conf_head_weight = {
-        k.replace('model.conf_head.', ''): pi3_weight[k] for k in pi3_weight.keys() if k.startswith('conf_head.')
-    }
-    weight.update(conf_decoder_weight)
-    weight.update(conf_head_weight)
-    
-    model.load_state_dict(weight)
-    
-    # 3. batched process each bucket
-    batch_size = 10
-    all_pairs = []
-    part = 1
-    save_every = 5000
-    
-    gts = []
-    preds = []
-    false_pair = []
-    for N in buckets:
-        print(f"Processing bucket with {N} images, total {len(buckets[N])} pairs.")
-        # process in batches
-        for i in tqdm(range(0, len(buckets[N]), batch_size)):
-            batch_image_lists = [item[0] for item in buckets[N][i:i+batch_size]]  # list of list of image paths
-            batch_pair_info = [item[1] for item in buckets[N][i:i+batch_size]]  # list of (image_0_relative_path, image_1_relative_path)
-            actual_batch_size = len(batch_image_lists)
-            # flatten the list of lists
-            flat_image_list = [img for sublist in batch_image_lists for img in sublist]
-            # load images as tensor
-            images_tensor = load_images_as_tensor_from_list(flat_image_list)
-            images_tensor = images_tensor.to(device)  # [B*N, 3, H, W]
-            B = actual_batch_size
-            images_tensor = images_tensor.view(B, N, 3, images_tensor.shape[2], images_tensor.shape[3])  # [B, N, 3, H, W]
+        # combined = list(zip(selected_imgs, labels))
 
-            with torch.no_grad():
-                with torch.amp.autocast('cuda', dtype=dtype):
-                    res = model(images_tensor)
-            # print(res['logits'].shape)
-            pred = res['logits']   # [B, N]
-            pred = torch.sigmoid(pred).cpu().numpy() # [B, N] (0, 1)
-            pred = pred[:, -1]  # only keep the last one (image_1)
+        # np.random.default_rng(42).shuffle(combined)
+        
+        # selected_imgs, labels = map(list, zip(*combined))
+         
+        # load images as tensor
+        images_tensor = load_images_as_tensor_from_list(selected_imgs)
+        images_tensor = images_tensor.to(device)
+        
 
-            for i, pair in enumerate(batch_pair_info):
-                image_0_relative_path, image_1_relative_path, pos_neg_pair_label, intrinsics = pair
-                gt = int(pos_neg_pair_label)
-                gts.append(gt)
-                preds.append(pred[i])
-                if gt == 1 and pred[i] < 0.5:
-                    false_pair.append((image_0_relative_path, image_1_relative_path, pos_neg_pair_label, intrinsics))
-                if gt == 0 and pred[i] >= 0.5:
-                    false_pair.append((image_0_relative_path, image_1_relative_path, pos_neg_pair_label, intrinsics))
+        with torch.no_grad():
+            with torch.amp.autocast('cuda', dtype=dtype):
+                res = model(images_tensor[None]) # Add batch dimension
+        # print(res['logits'].shape)
+        pred = res['logits']   # [B, N]
+        pred = torch.sigmoid(pred).cpu().numpy() # [B, N] (0, 1)
+        print(selected_imgs)
+        print(pred)
+        print(labels)
+        input()
+
+        # for i, pair in enumerate(batch_pair_info):
+        #     image_0_relative_path, image_1_relative_path, pos_neg_pair_label, intrinsics = pair
+        #     gt = int(pos_neg_pair_label)
+        #     gts.append(gt)
+        #     preds.append(pred[i])
+        #     if gt == 1 and pred[i] < 0.5:
+        #         false_pair.append((image_0_relative_path, image_1_relative_path, pos_neg_pair_label, intrinsics))
+        #     if gt == 0 and pred[i] >= 0.5:
+        #         false_pair.append((image_0_relative_path, image_1_relative_path, pos_neg_pair_label, intrinsics))
                     
     np.save('false_pairs_visym_test_pi3_visymscenes_classification_multi_level_feature.npy', np.array(false_pair, dtype=object))
     quit()

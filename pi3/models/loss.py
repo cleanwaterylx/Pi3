@@ -463,7 +463,7 @@ class Pi3Loss_Classification(nn.Module):
     ):
         super().__init__()
         self.classification_loss = ClassificationLoss()
-        self.supcon_loss = SupconLoss()
+        # self.supcon_loss = SupconLoss()
     
     def prepare_gt(self, gt):
         labels = torch.stack([view['pos_neg_pair_label'] for view in gt], dim=1)
@@ -484,9 +484,8 @@ class Pi3Loss_Classification(nn.Module):
 
         # Classification Loss
         classification_loss, classification_loss_details = self.classification_loss(pred, gt)
-        supcon_loss, supcon_loss_details = self.supcon_loss(pred, gt)
-        final_loss += classification_loss + 0.1 * supcon_loss
+        # supcon_loss, supcon_loss_details = self.supcon_loss(pred, gt)
+        final_loss += classification_loss
         details.update(classification_loss_details)
-        details.update(supcon_loss_details)
 
         return final_loss, details

@@ -213,4 +213,5 @@ class ClassificationHead(nn.Module):
         # ---- 4. 分类 ----
         logits = self.classifier(feat).squeeze(-1)  # (B, N)
 
-        return logits, feat
+        # return logits, feat
+        return logits
