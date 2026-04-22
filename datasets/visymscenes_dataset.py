@@ -74,11 +74,39 @@ class VisymScenesDataset(BaseDataset):
         # print(image_0_name)
         # print('Image 0 index in the sequence:', idx)
 
-        #  set image_0 as anchor ,idx random +- 5
-        # todo random step or sample 
-        step = (self.frame_num - 4) // 4
-        idxs_1 = list(range(max(0, idx_1 - step), min(len(imgs_1), idx_1 + step + 1)))
-        idxs_2 = list(range(max(0, idx_2 - step), min(len(imgs_2), idx_2 + step + 1)))
+        def sample_indices(center_idx, total_len, num_samples):
+            if num_samples == 1:
+                return [center_idx]
+
+            indices = [center_idx]
+            offset = 1
+
+            while len(indices) < num_samples:
+                left = center_idx - offset
+                right = center_idx + offset
+
+                if left >= 0:
+                    indices.append(left)
+                    if len(indices) >= num_samples:
+                        break
+
+                if right < total_len:
+                    indices.append(right)
+                    if len(indices) >= num_samples:
+                        break
+
+                if left < 0 and right >= total_len:
+                    break
+
+                offset += 1
+
+            return sorted(indices)
+
+        split_choices = [(n1, self.frame_num - n1) for n1 in range(self.frame_num // 4, self.frame_num - self.frame_num // 4 + 1)]
+        n1, n2 = random.choice(split_choices)
+
+        idxs_1 = sample_indices(idx_1, len(imgs_1), n1)
+        idxs_2 = sample_indices(idx_2, len(imgs_2), n2)
         # print(self.frame_num)
         # print(max(0, idx_1 - step), min(len(imgs_1), idx_1 + step))
         # print('idx_1:', idx_1, 'idx_2:', idx_2)
@@ -158,4 +186,3 @@ class VisymScenesDataset(BaseDataset):
         #     ))
         
         return views   
-

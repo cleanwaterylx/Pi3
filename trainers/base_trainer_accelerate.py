@@ -347,6 +347,7 @@ class BaseTrainer:
             )
         )
 
+        total_pair = 0
         for it, batch in enumerate(metric_logger.log_every(
             self.train_loader, self.cfg.train.print_freq, header
         )):
@@ -359,6 +360,9 @@ class BaseTrainer:
                 with self.accelerator.autocast():
                     forward_output = self.forward_batch(batch, mode='train')
                 batch_output = self.calculate_loss(forward_output, batch, mode='train')
+                total_pair += forward_output[0]['feat'].shape[0]
+                print('Total pair:', total_pair)
+                print(forward_output[0]['feat'].shape)
                 loss = batch_output.loss
                 if loss > self.cfg.train.clip_loss:
                     loss = loss * 0.0

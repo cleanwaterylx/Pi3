@@ -14,7 +14,7 @@ log:
     entity: ethan-predator
     project: ${name}
   summary_interval: 1 # interval of step
-  ckpt_interval: 10 # interval of epoch
+  ckpt_interval: 1 # interval of epoch
   max_checkpoints: 3
   # ckpt_dir: '${work_dir}/outputs/${name}-${now:%Y-%m-%d_%H-%M-%S}/ckpts'
   ckpt_dir: '${work_dir}/outputs/${name}/ckpts'

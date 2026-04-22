@@ -5,77 +5,9 @@ import random
 import torch
 from tqdm import tqdm
 
-# dopp_pair_path = '/home/disk8/dopp_data/pairs_metadata/train_pairs_visym.npy'
-# dopp_pair = np.load(dopp_pair_path, allow_pickle=True)
-# # sample 100 pairs
-# # ...existing code...
-# # 新增：从 dopp_pair 中不重复随机抽取最多 100 个样本并保存到文件
-# dopp_pair
-# rng = np.random.default_rng(42)  # 固定随机种子，方便复现；如不需要可去掉或改为 None
-# n_samples = 100
-# n_total = len(dopp_pair)
-
-# if n_total <= n_samples:
-#     sampled_pairs = dopp_pair.copy()
-# else:
-#     indices = rng.choice(n_total, size=n_samples, replace=False)
-#     sampled_pairs = dopp_pair[indices]
-
-# print(sampled_pairs)
-
-
-# dataset = VisymScenesDataset(resolution=[518, 336], data_root='/home/disk8/dopp_data/visymscenes', mode='train', verbose=True)
-
-all_pairs = np.load('pair_data/test_pairs_visym_with_intrinsics.npy', allow_pickle=True)
-print(len(all_pairs))
-print(all_pairs[0])
-quit()
-
-all_pairs = []
-with open("all_pairs_test.pkl", "rb") as f:
-    all_pairs = pickle.load(f)
-
-new_all_pairs = []
-for pair in tqdm(all_pairs):
-    pair_0, pair_1, pair_2, binary, image_lists = pair
-    pair = (pair_0, pair_1, pair_2, binary.cpu().numpy(), image_lists)
-    new_all_pairs.append(pair)
-
-with open("all_pairs_test_1.pkl", "wb") as f:
-    pickle.dump(new_all_pairs, f)
-input()
-
-num_total = len(all_pairs)
-split_idx = int(0.8 * num_total)
-
-test_pairs = all_pairs[split_idx:]
-with open("pair_data/test_pairs_shuffled_with_intrinsics.pkl", "wb") as f:
-    pickle.dump(test_pairs, f)
-
-
-# for idx, img in enumerate(all_pairs[0][4]):
-#     print(img)
-#     print(all_pairs[0][3][idx])
-# print(all_pairs[0])
-# print(len(all_pairs[0][3]))
-
-
-# num_total = len(all_pairs)
-# split_idx = int(0.8 * num_total)
-
-# test_pairs = all_pairs[split_idx:]
-# print(f'Total number of pairs: {len(all_pairs)}')
-# print(f'Number of test pairs: {len(test_pairs)}')
-# pos_pair = [all_pairs[37907]]
-# with open("pair_data/neg_pairs_with_intrinsics.pkl", "wb") as f:
-#     pickle.dump(pos_pair, f)
-
-
-# print(len(all_pairs))
-# num = 0
-# for idx, pair in enumerate(all_pairs):
-#     if pair[2] == '0':
-#         print(pair)
-#         print(idx)
-#         input()
-# print(f'Number of negative pairs: {num}, total pairs: {len(all_pairs)}')
+data = np.load('gts_preds_visym_test_pi3_visymscenes_feature_512_epoch3.npy', allow_pickle=True).item()
+wrong = 0
+for i in range(len(data['gts'])):
+    if data['gts'][i] != data['preds'][i]:
+        wrong += 1
+print(f"Total: {len(data['gts'])}, Wrong: {wrong}, Accuracy: {(len(data['gts'])-wrong)/len(data['gts']):.4f}")

@@ -8,6 +8,7 @@
 *.ply
 *.png
 *.so
+.codex
 
 **/__pycache__/
 **/build/

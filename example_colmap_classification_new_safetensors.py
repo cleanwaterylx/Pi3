@@ -2,7 +2,8 @@ import torch
 import argparse
 from pi3.utils.basic import load_images_as_tensor, write_ply, load_images_as_tensor_from_list
 from pi3.utils.geometry import depth_edge
-from pi3.models.pi3_classification_no_multi_level_feature_supconloss import Pi3
+from pi3.models.pi3_classification_one_image_one_feature_with_infonce_loss import Pi3
+import torch.nn.functional as F
 import open3d as o3d
 import numpy as np
 import utils3d
@@ -13,11 +14,6 @@ from pi3.dependency.np_to_pycolmap import batch_np_matrix_to_pycolmap, batch_np_
 from pi3.utils.geometry_torch import recover_focal_shift
 from pi3.utils.helper import create_pixel_coordinate_grid
 
-def class_to_binary(pred_class, N):
-    out = torch.ones(N, dtype=torch.int64)
-    if pred_class < N:
-        out[pred_class] = 0
-    return out
 
 if __name__ == '__main__':
     # --- Argument Parsing ---
@@ -50,7 +46,7 @@ if __name__ == '__main__':
     dtype = torch.bfloat16 if torch.cuda.get_device_capability()[0] >= 8 else torch.float16
     model = Pi3().to(device).eval()
     from safetensors.torch import load_file
-    weight = load_file('ckpts/pi3_visymscenes_classification_no_multi_level_feature.safetensors')
+    weight = load_file('ckpts/pi3_visymscenes_feature_512_epoch3.safetensors')
     pi3_weight = load_file('ckpts/model.safetensors')
     #load conf weights from pi3_weight
     conf_decoder_weight = {
@@ -75,70 +71,185 @@ if __name__ == '__main__':
     # 2. Prepare input data
     # The load_images_as_tensor function will print the loading path
     # imgs = load_images_as_tensor(args.data_path, interval=args.interval).to(device) # (N, 3, H, W)
-    image_root = '/home/disk3_SSD/ylx/dataset_pi3_classification/desk/input'
-    image_name = ['0001.jpg','0002.jpg', '0003.jpg', '0004.jpg', '0005.jpg', '0006.jpg','0007.jpg', '0027.jpg']
+    
+    image_root = '/home/disk3_SSD/ylx/dataset_vggt_classification'
 
-    image_list = [os.path.join(image_root, name) for name in image_name]
-    imgs = load_images_as_tensor_from_list(image_list=image_list, interval=args.interval).to(device) # (N, 3, H, W)
+    all_node4 = [
+#         [
+#     "26/input/00024.jpg",
+#     "26/input/00025.jpg",
+#     "26/input/00026.jpg",
+#     "26/input/00027.jpg",
+#     "26/input/00028.jpg",
+#     "26/input/00029.jpg",
+#     "26/input/00030.jpg",
+#     "26/input/00031.jpg",
+#     "26/input/00032.jpg",
+#     "26/input/00033.jpg",
+#     "26/input/00034.jpg",
+#     "26/input/00035.jpg",
+#     "26/input/00036.jpg",
+#     "26/input/00037.jpg",
+#     "26/input/00038.jpg",
+#     "26/input/00039.jpg",
+#     "26/input/00040.jpg",
+#     "26/input/00041.jpg",
+#     "26/input/00042.jpg",
+#     "26/input/00043.jpg",
+#     "26/input/00044.jpg",
+#     "26/input/00045.jpg",
+#     "26/input/00046.jpg",
+#     "26/input/00047.jpg",
+#     "26/input/00048.jpg",
+#     "26/input/00049.jpg",
+#     "26/input/00050.jpg",
+#     "26/input/00051.jpg",
+#     "26/input/00052.jpg",
+#     "26/input/00053.jpg",
+#     "26/input/00054.jpg",
+# ],
+                 ['26/input/00024.jpg', '26/input/00025.jpg', '26/input/00026.jpg', '26/input/00083.jpg'],
+                 ['26/input/00024.jpg', '26/input/00025.jpg', '26/input/00026.jpg', '26/input/00043.jpg'],
+                 ['26/input/00024.jpg', '26/input/00025.jpg', '26/input/00026.jpg', '26/input/00039.jpg'],
+                 ['26/input/00086.jpg', '26/input/00089.jpg', '26/input/00090.jpg', '26/input/00123.jpg'],
+                 ['street/input/0000.jpg', 'street/input/0001.jpg', 'street/input/0002.jpg', 'street/input/0016.jpg'],
+                 ['street/input/0000.jpg', 'street/input/0001.jpg', 'street/input/0002.jpg', 'street/input/0017.jpg'],
+                 ['street/input/0003.jpg', 'street/input/0004.jpg', 'street/input/0005.jpg', 'street/input/0012.jpg'],
+                 ['street/input/0003.jpg', 'street/input/0004.jpg', 'street/input/0005.jpg', 'street/input/0014.jpg'],
+                 ['street/input/0003.jpg', 'street/input/0004.jpg', 'street/input/0005.jpg', 'street/input/0016.jpg'],
+                 ['street/input/0004.jpg', 'street/input/0005.jpg', 'street/input/0006.jpg', 'street/input/0016.jpg'],
+                 ['books/input/0001.jpg', 'books/input/0002.jpg', 'books/input/0003.jpg', 'books/input/0014.jpg'],
+                 ['books/input/0001.jpg', 'books/input/0002.jpg', 'books/input/0003.jpg', 'books/input/0015.jpg'],
+                 ['books/input/0002.jpg', 'books/input/0003.jpg', 'books/input/0004.jpg', 'books/input/0015.jpg'],
+                 ['indoor/input/0033.jpg', 'indoor/input/0047.jpg', 'indoor/input/0077.jpg', 'indoor/input/0015.jpg'],
+                 ['indoor/input/0033.jpg', 'indoor/input/0047.jpg', 'indoor/input/0077.jpg', 'indoor/input/0067.jpg'],
+                 ['indoor/input/0033.jpg', 'indoor/input/0047.jpg', 'indoor/input/0077.jpg', 'indoor/input/0080.jpg'],
+                 ['indoor/input/0033.jpg', 'indoor/input/0047.jpg', 'indoor/input/0077.jpg', 'indoor/input/0019.jpg'],
+                 ]
+    
 
-    # 3. Infer
-    print("Running model inference...")
-    dtype = torch.bfloat16 if torch.cuda.get_device_capability()[0] >= 8 else torch.float16
-    with torch.no_grad():
-        with torch.amp.autocast('cuda', dtype=dtype):
-            res = model(imgs[None]) # Add batch dimension
+    for image_name in all_node4:
+        image_list = [os.path.join(image_root, name) for name in image_name]
+        imgs = load_images_as_tensor_from_list(image_list=image_list, interval=args.interval).to(device) # (N, 3, H, W)
+
+        # 3. Infer
+        print("Running model inference...")
+        dtype = torch.bfloat16 if torch.cuda.get_device_capability()[0] >= 8 else torch.float16
+        with torch.no_grad():
+            with torch.amp.autocast('cuda', dtype=dtype):
+                res = model(imgs[None]) # Add batch dimension
+            
+        if args.show_conf:
+            # imgs: (N, 3, H, W)
+            imgs_show = imgs.detach().cpu().numpy()
+
+            # conf: (N, H, W) logits
+            conf = res['conf'][0].detach().cpu().numpy().squeeze(-1)
+            conf = 1 / (1 + np.exp(-conf))   # sigmoid
+
+            print('camera_poses', res['camera_poses'][0].cpu().numpy())
+
+            N = imgs_show.shape[0]
+            pairs_per_row = 5
+            cols = pairs_per_row * 2
+            rows = math.ceil(N / pairs_per_row)
+
+            fig, axs = plt.subplots(rows, cols, figsize=(cols * 3, rows * 3))
+            axs = np.array(axs).reshape(rows, cols)
+
+            for i in range(N):
+                row = i // pairs_per_row
+                col = (i % pairs_per_row) * 2
+
+                # ---- image ----
+                img = imgs_show[i].transpose(1, 2, 0)  # (H, W, 3)
+                img = np.clip(img, 0, 1)           # 如果是 0~1
+
+                axs[row, col].imshow(img)
+                axs[row, col].set_title(f'Img {i}')
+                axs[row, col].axis('off')
+
+                # ---- conf ----
+                axs[row, col + 1].imshow(conf[i], cmap='jet')
+                axs[row, col + 1].set_title(f'Conf {i}')
+                axs[row, col + 1].axis('off')
+
+            # 关掉多余格子
+            for j in range(N * 2, rows * cols):
+                axs.flat[j].axis('off')
+
+            plt.tight_layout()
+            plt.show()
+            quit()
+
+        features = res['feat']   # [B, N, C]
+        # 1) normalize features
+        features = F.normalize(features, dim=-1)
+        labels = torch.tensor([[1, 1, 1, 0]], device=features.device)   # [B, N]
+        # 2) pairwise similarity: [B, N, N]
+        sim = torch.matmul(features, features.transpose(1, 2))   # 如果和训练一致，这里最好 / tau
+        tau = 0.07
+        eps = 1e-12
+        sim = sim / tau
+
+        B, N, C = features.shape
+        device = features.device
+
+        # 3) remove self-comparison
+        self_mask = torch.eye(N, device=device).unsqueeze(0)     # [1, N, N]
+        logits_mask = 1.0 - self_mask                            # [1, N, N]
+
+        # 4) positive mask: same label means positive
+        labels_expand = labels.unsqueeze(-1)                     # [B, N, 1]
+        pos_mask = (labels_expand == labels_expand.transpose(1, 2)).float()   # [B, N, N]
+        pos_mask = pos_mask * logits_mask
+
+        # 5) log_prob
+        exp_sim = torch.exp(sim) * logits_mask
+        log_prob = sim - torch.log(exp_sim.sum(dim=2, keepdim=True) + eps)
+
+        # 6) average over positives
+        pos_count = pos_mask.sum(dim=2)                          # [B, N]
+        loss_i = -(pos_mask * log_prob).sum(dim=2) / (pos_count + eps)
+
+        # 7) only valid anchors
+        valid_mask = pos_count > 0
+        if valid_mask.sum() == 0:
+            loss = features.new_tensor(0.0)
+        else:
+            loss = loss_i[valid_mask].mean()
+
+        print("image_name:", image_name)
+        print("labels:\n", labels)
+        print("sim:\n", sim*tau)
+        print("pos_mask:\n", pos_mask)
+        print("final loss:", loss.item())
+        input()
+
+    # image_root = '/home/disk3_SSD/ylx/dataset_vggt_classification/indoor/input'
+    # image_name = os.listdir(image_root)
+
+    # image_list = [os.path.join(image_root, name) for name in image_name]
+    # imgs = load_images_as_tensor_from_list(image_list=image_list, interval=args.interval).to(device) # (N, 3, H, W)
+
+    # # 3. Infer
+    # print("Running model inference...")
+    # dtype = torch.bfloat16 if torch.cuda.get_device_capability()[0] >= 8 else torch.float16
+    # with torch.no_grad():
+    #     with torch.amp.autocast('cuda', dtype=dtype):
+    #         res = model(imgs[None]) # Add batch dimension
         
-    if args.show_conf:
-        # imgs: (N, 3, H, W)
-        imgs_show = imgs.detach().cpu().numpy()
+    # features = res['feat']   # [B, N, C]
+    #     # 1) normalize features
+    # features = F.normalize(features, dim=-1)
 
-        # conf: (N, H, W) logits
-        conf = res['conf'][0].detach().cpu().numpy().squeeze(-1)
-        conf = 1 / (1 + np.exp(-conf))   # sigmoid
+    #     # 2) pairwise similarity: [B, N, N]
+    # sim = torch.matmul(features, features.transpose(1, 2)) / 0.07
+    # print(sim)
+    # print(image_name)
+    # input()
 
-        print('camera_poses', res['camera_poses'][0].cpu().numpy())
-
-        N = imgs_show.shape[0]
-        pairs_per_row = 5
-        cols = pairs_per_row * 2
-        rows = math.ceil(N / pairs_per_row)
-
-        fig, axs = plt.subplots(rows, cols, figsize=(cols * 3, rows * 3))
-        axs = np.array(axs).reshape(rows, cols)
-
-        for i in range(N):
-            row = i // pairs_per_row
-            col = (i % pairs_per_row) * 2
-
-            # ---- image ----
-            img = imgs_show[i].transpose(1, 2, 0)  # (H, W, 3)
-            img = np.clip(img, 0, 1)           # 如果是 0~1
-
-            axs[row, col].imshow(img)
-            axs[row, col].set_title(f'Img {i}')
-            axs[row, col].axis('off')
-
-            # ---- conf ----
-            axs[row, col + 1].imshow(conf[i], cmap='jet')
-            axs[row, col + 1].set_title(f'Conf {i}')
-            axs[row, col + 1].axis('off')
-
-        # 关掉多余格子
-        for j in range(N * 2, rows * cols):
-            axs.flat[j].axis('off')
-
-        plt.tight_layout()
-        plt.show()
-        quit()
-
-    print(res['logits'][0].shape)
-    print(res['logits'][0])
-    pred_class = res['logits'][0].argmax(dim=0).item()
-    print("Predicted classes (per image + none): ", pred_class)
-    binary = class_to_binary(pred_class, res['logits'][0].shape[0] - 1)
-    print(binary)
     quit()
-
 
 
     # 4. process mask

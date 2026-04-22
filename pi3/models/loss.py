@@ -290,6 +290,53 @@ class SupconLoss(nn.Module):
         loss = loss.mean()
         return loss, dict(supcon_loss=loss)
 
+class FeatureLoss(nn.Module):
+    def __init__(self, tau=0.07, eps=1e-12):
+        super().__init__()
+        self.tau = tau
+        self.eps = eps
+    
+    def forward(self, pred, gt):
+        features = pred['feat']                 # [B, N, C]
+        labels = gt['pos_neg_pair_labels']      # [B, N]
+
+        B, N, C = features.shape
+        device = features.device
+
+        # 1) normalize features
+        features = F.normalize(features, dim=-1)
+
+        # 2) pairwise similarity: [B, N, N]
+        sim = torch.matmul(features, features.transpose(1, 2)) / self.tau
+
+        # 3) remove self-comparison
+        self_mask = torch.eye(N, device=device).unsqueeze(0)   # [1, N, N]
+        logits_mask = 1.0 - self_mask                          # [1, N, N]
+
+        # 4) positive mask: same label means positive
+        labels = labels.unsqueeze(-1)                          # [B, N, 1]
+        pos_mask = (labels == labels.transpose(1, 2)).float() # [B, N, N]
+        pos_mask = pos_mask * logits_mask
+
+        # 5) log_prob
+        exp_sim = torch.exp(sim) * logits_mask
+        log_prob = sim - torch.log(exp_sim.sum(dim=2, keepdim=True) + self.eps)
+
+        # 6) average over positives
+        pos_count = pos_mask.sum(dim=2)                        # [B, N]
+        loss_i = -(pos_mask * log_prob).sum(dim=2) / (pos_count + self.eps)
+
+        # 7) only valid anchors (anchors with at least one positive)
+        valid_mask = pos_count > 0
+        if valid_mask.sum() == 0:
+            return features.new_tensor(0.0)
+
+        loss = loss_i[valid_mask].mean()
+        return loss, dict(feature_loss=loss)
+
+
+
+
 # ---------------------------------------------------------------------------
 # Final Loss
 # ---------------------------------------------------------------------------
@@ -487,5 +534,38 @@ class Pi3Loss_Classification(nn.Module):
         # supcon_loss, supcon_loss_details = self.supcon_loss(pred, gt)
         final_loss += classification_loss
         details.update(classification_loss_details)
+
+        return final_loss, details
+
+
+class Pi3Loss_Feature(nn.Module):
+    def __init__(
+        self,
+        train_conf=False,
+    ):
+        super().__init__()
+        self.feature_loss = FeatureLoss()
+    
+    def prepare_gt(self, gt):
+        labels = torch.stack([view['pos_neg_pair_label'] for view in gt], dim=1)
+
+        dataset_names = gt[0]['dataset']
+
+        return dict(
+            imgs = torch.stack([view['img'] for view in gt], dim=1),
+            pos_neg_pair_labels=labels,
+            dataset_names=dataset_names
+        )
+    
+    def forward(self, pred, gt_raw):
+        gt = self.prepare_gt(gt_raw)
+        
+        final_loss = 0.0
+        details = dict()
+
+        # Feature Loss
+        feature_loss, feature_loss_details = self.feature_loss(pred, gt)
+        final_loss += feature_loss
+        details.update(feature_loss_details)
 
         return final_loss, details

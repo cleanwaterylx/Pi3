@@ -1,8 +1,9 @@
 import torch
+import torch.nn.functional as F
 import argparse
 from pi3.utils.basic import load_images_as_tensor_from_list
 from pi3.utils.geometry import depth_edge
-from pi3.models.pi3_classification_one_view_one_labal import Pi3
+from pi3.models.pi3_classification_one_image_one_feature_with_infonce_loss import Pi3
 import open3d as o3d
 import numpy as np
 import utils3d
@@ -117,7 +118,7 @@ if __name__ == '__main__':
     dtype = torch.bfloat16 if torch.cuda.get_device_capability()[0] >= 8 else torch.float16
     model = Pi3().to(device).eval()
     from safetensors.torch import load_file
-    weight = load_file('ckpts/pi3_visymscenes_classification_one_view_one_label.safetensors')
+    weight = load_file('ckpts/pi3_visymscenes_feature_512_epoch3.safetensors')
     pi3_weight = load_file('ckpts/model.safetensors')
     #load conf weights from pi3_weight
     conf_decoder_weight = {
@@ -186,12 +187,26 @@ if __name__ == '__main__':
             with torch.amp.autocast('cuda', dtype=dtype):
                 res = model(images_tensor[None]) # Add batch dimension
         # print(res['logits'].shape)
-        pred = res['logits']   # [B, N]
-        pred = torch.sigmoid(pred).cpu().numpy() # [B, N] (0, 1)
-        print(selected_imgs)
-        print(pred)
+        features = res['feat']   # [B, N, C]
+        # 1) normalize features
+        features = F.normalize(features, dim=-1)
+
+        # 2) pairwise similarity: [B, N, N]
+        sim = torch.matmul(features, features.transpose(1, 2))
+
+        # print(selected_imgs)
+        # print(features)
+        # print(features.shape)
+        # print(sim.shape)
+        print(sim)
         print(labels)
         input()
+
+        gts.append(pos_neg_pair_label)
+        preds.append(0 if sim[0][-1][0] < 12 else 1)  # 12 is a threshold, can be tuned based on validation set
+
+        # print(pos_neg_pair_label, 0 if sim[0][-1][0] < 12 else 1)
+        # input()
 
         # for i, pair in enumerate(batch_pair_info):
         #     image_0_relative_path, image_1_relative_path, pos_neg_pair_label, intrinsics = pair
@@ -203,9 +218,8 @@ if __name__ == '__main__':
         #     if gt == 0 and pred[i] >= 0.5:
         #         false_pair.append((image_0_relative_path, image_1_relative_path, pos_neg_pair_label, intrinsics))
                     
-    np.save('false_pairs_visym_test_pi3_visymscenes_classification_multi_level_feature.npy', np.array(false_pair, dtype=object))
-    quit()
-            
+    np.save('gts_preds_visym_test_pi3_visymscenes_feature_512_epoch3.npy', {'gts': gts, 'preds': preds})        
+    
     ap = average_precision_score(gts, preds)
     auc = roc_auc_score(gts, preds)
     print(f"AP: {ap:.4f}, AUC: {auc:.4f}")

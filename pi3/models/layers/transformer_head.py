@@ -213,5 +213,35 @@ class ClassificationHead(nn.Module):
         # ---- 4. 分类 ----
         logits = self.classifier(feat).squeeze(-1)  # (B, N)
 
-        # return logits, feat
-        return logits
+        return logits, feat
+        # return logits
+    
+
+    
+class FeatureHead(nn.Module):
+    """ 
+    Feature head for image-level feature extraction
+    """
+
+    def __init__(self, dec_embed_dim, output_dim=1024):
+        super().__init__()
+        self.proj = nn.Sequential(
+            nn.Linear(dec_embed_dim, dec_embed_dim // 2),
+            nn.ReLU(inplace=True),
+            nn.Linear(dec_embed_dim // 2, output_dim)
+        )
+
+    def forward(self, decout, N, patch_start_idx):
+        # decout: (B*N, num_register_tokens, dec_embed_dim)
+        BN, n, c = decout.shape
+        B = BN // N
+        
+        reg = decout[:, :patch_start_idx, :]       # (B*N, K, C)
+        patch = decout[:, patch_start_idx:, :]     # (B*N, P, C)
+
+        #todo 融合reg patch token
+        reg_mean = reg.mean(dim=1)   # (B*N, C)
+        feat = self.proj(reg_mean)   # (B*N, output_dim)
+        feat = feat.view(B, N, -1)   # (B, N, output_dim)
+
+        return feat
