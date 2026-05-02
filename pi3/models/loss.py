@@ -326,13 +326,31 @@ class FeatureLoss(nn.Module):
         pos_count = pos_mask.sum(dim=2)                        # [B, N]
         loss_i = -(pos_mask * log_prob).sum(dim=2) / (pos_count + self.eps)
 
-        # 7) only valid anchors (anchors with at least one positive)
+        # 7) only valid anchors
         valid_mask = pos_count > 0
         if valid_mask.sum() == 0:
-            return features.new_tensor(0.0)
+            contrast_loss = features.new_tensor(0.0)
+        else:
+            contrast_loss = loss_i[valid_mask].mean()
 
-        loss = loss_i[valid_mask].mean()
-        return loss, dict(feature_loss=loss)
+        # 8) align first image features to normalized all-ones vector
+        target = torch.ones(C, device=device)
+        target = F.normalize(target, dim=0)                    # [C]
+        target = target.view(1, 1, C)                   # [1, 1, C]
+
+        first_feat = features[:, 0, :]                            # [B, 1, C]
+        cos_sim = (first_feat * target.unsqueeze(0)).sum(dim=-1)   # [B]
+        align_loss = 1.0 - cos_sim.mean()
+
+        # 9) total loss
+        lambda_align = 0.1
+        loss = contrast_loss + lambda_align * align_loss
+
+        return loss, {
+            'feature_loss': contrast_loss,
+            'align_loss': align_loss,
+            'total_loss': loss,
+        }
 
 
 

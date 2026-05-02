@@ -118,7 +118,7 @@ if __name__ == '__main__':
     dtype = torch.bfloat16 if torch.cuda.get_device_capability()[0] >= 8 else torch.float16
     model = Pi3().to(device).eval()
     from safetensors.torch import load_file
-    weight = load_file('ckpts/pi3_visymscenes_feature_512_epoch3.safetensors')
+    weight = load_file('ckpts/pi3_visymscenes_feature_align_first_img_512_epoch2.safetensors')
     pi3_weight = load_file('ckpts/model.safetensors')
     #load conf weights from pi3_weight
     conf_decoder_weight = {
@@ -198,12 +198,13 @@ if __name__ == '__main__':
         # print(features)
         # print(features.shape)
         # print(sim.shape)
-        print(sim)
-        print(labels)
-        input()
+        # print(sim)
+        # print(labels)
+        # input()
 
         gts.append(pos_neg_pair_label)
-        preds.append(0 if sim[0][-1][0] < 12 else 1)  # 12 is a threshold, can be tuned based on validation set
+        preds.append(sim[0, -1, 0].detach().cpu().item())
+        # preds.append(0 if sim[0][-1][0] < 0.9 else 1)  # 12 is a threshold, can be tuned based on validation set
 
         # print(pos_neg_pair_label, 0 if sim[0][-1][0] < 12 else 1)
         # input()
@@ -218,7 +219,7 @@ if __name__ == '__main__':
         #     if gt == 0 and pred[i] >= 0.5:
         #         false_pair.append((image_0_relative_path, image_1_relative_path, pos_neg_pair_label, intrinsics))
                     
-    np.save('gts_preds_visym_test_pi3_visymscenes_feature_512_epoch3.npy', {'gts': gts, 'preds': preds})        
+    np.save('gts_preds_visym_test_pi3_visymscenes_feature_align_first_img_512_epoch2.npy', {'gts': gts, 'preds': preds})        
     
     ap = average_precision_score(gts, preds)
     auc = roc_auc_score(gts, preds)
@@ -238,7 +239,7 @@ if __name__ == '__main__':
     recall_at_prec = np.max(recall[idx]) if len(idx) > 0 else 0.0
     print("Recall@Prec>=0.99:", recall_at_prec)
     
-    np.save('gts_preds_visym_test_pi3_visymscenes_classification_multi_level_feature.npy', {'gts': gts, 'preds': preds})
+    np.save('gts_preds_visym_test_pi3_visymscenes_feature_align_first_img_512_epoch2.npy', {'gts': gts, 'preds': preds})
     
             
 

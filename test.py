@@ -5,7 +5,7 @@ import random
 import torch
 from tqdm import tqdm
 
-data = np.load('gts_preds_visym_test_pi3_visymscenes_feature_512_epoch3.npy', allow_pickle=True).item()
+data = np.load('gts_preds_visym_test_pi3_visymscenes_feature_align_first_img_512_epoch2.npy', allow_pickle=True).item()
 wrong = 0
 for i in range(len(data['gts'])):
     if data['gts'][i] != data['preds'][i]:
