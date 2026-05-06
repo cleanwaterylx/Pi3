@@ -46,7 +46,7 @@ if __name__ == '__main__':
     dtype = torch.bfloat16 if torch.cuda.get_device_capability()[0] >= 8 else torch.float16
     model = Pi3().to(device).eval()
     from safetensors.torch import load_file
-    weight = load_file('ckpts/pi3_visymscenes_feature_align_first_img_512_epoch2.safetensors')
+    weight = load_file('ckpts/pi3_visymscenes_feature_align_first_img_512_epoch4_lora.safetensors')
     pi3_weight = load_file('ckpts/model.safetensors')
     #load conf weights from pi3_weight
     conf_decoder_weight = {
@@ -200,30 +200,30 @@ if __name__ == '__main__':
         logits_mask = 1.0 - self_mask                            # [1, N, N]
 
         # 4) positive mask: same label means positive
-        labels_expand = labels.unsqueeze(-1)                     # [B, N, 1]
-        pos_mask = (labels_expand == labels_expand.transpose(1, 2)).float()   # [B, N, N]
-        pos_mask = pos_mask * logits_mask
+        # labels_expand = labels.unsqueeze(-1)                     # [B, N, 1]
+        # pos_mask = (labels_expand == labels_expand.transpose(1, 2)).float()   # [B, N, N]
+        # pos_mask = pos_mask * logits_mask
 
         # 5) log_prob
         exp_sim = torch.exp(sim) * logits_mask
         log_prob = sim - torch.log(exp_sim.sum(dim=2, keepdim=True) + eps)
 
         # 6) average over positives
-        pos_count = pos_mask.sum(dim=2)                          # [B, N]
-        loss_i = -(pos_mask * log_prob).sum(dim=2) / (pos_count + eps)
+        # pos_count = pos_mask.sum(dim=2)                          # [B, N]
+        # loss_i = -(pos_mask * log_prob).sum(dim=2) / (pos_count + eps)
 
         # 7) only valid anchors
-        valid_mask = pos_count > 0
-        if valid_mask.sum() == 0:
-            loss = features.new_tensor(0.0)
-        else:
-            loss = loss_i[valid_mask].mean()
+        # valid_mask = pos_count > 0
+        # if valid_mask.sum() == 0:
+        #     loss = features.new_tensor(0.0)
+        # else:
+        #     loss = loss_i[valid_mask].mean()
 
         print("image_name:", image_name)
         print("labels:\n", labels)
         print("sim:\n", sim*tau)
-        print("pos_mask:\n", pos_mask)
-        print("final loss:", loss.item())
+        # print("pos_mask:\n", pos_mask)
+        # print("final loss:", loss.item())
         input()
 
     # image_root = '/home/disk3_SSD/ylx/dataset_vggt_classification/indoor/input'

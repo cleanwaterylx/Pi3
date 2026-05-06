@@ -16,3 +16,4 @@ utils3d
 prettytable
 rich
 tensorboard
+peft

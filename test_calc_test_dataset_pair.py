@@ -118,7 +118,7 @@ if __name__ == '__main__':
     dtype = torch.bfloat16 if torch.cuda.get_device_capability()[0] >= 8 else torch.float16
     model = Pi3().to(device).eval()
     from safetensors.torch import load_file
-    weight = load_file('ckpts/pi3_visymscenes_feature_align_first_img_512_epoch2.safetensors')
+    weight = load_file('ckpts/pi3_visymscenes_feature_align_first_img_512_epoch4_lora.safetensors')
     pi3_weight = load_file('ckpts/model.safetensors')
     #load conf weights from pi3_weight
     conf_decoder_weight = {
@@ -239,7 +239,7 @@ if __name__ == '__main__':
     recall_at_prec = np.max(recall[idx]) if len(idx) > 0 else 0.0
     print("Recall@Prec>=0.99:", recall_at_prec)
     
-    np.save('gts_preds_visym_test_pi3_visymscenes_feature_align_first_img_512_epoch2.npy', {'gts': gts, 'preds': preds})
+    np.save('gts_preds_visym_test_pi3_visymscenes_feature_align_first_img_512_epoch4_lora.npy', {'gts': gts, 'preds': preds})
     
             
 
