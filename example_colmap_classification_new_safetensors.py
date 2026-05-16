@@ -46,7 +46,7 @@ if __name__ == '__main__':
     dtype = torch.bfloat16 if torch.cuda.get_device_capability()[0] >= 8 else torch.float16
     model = Pi3().to(device).eval()
     from safetensors.torch import load_file
-    weight = load_file('ckpts/pi3_visymscenes_feature_align_first_img_512_epoch4_lora.safetensors')
+    weight = load_file('ckpts/pi3_visymscenes_feature_align_first_img_lora_visym_dopp_epoch2.safetensors')
     pi3_weight = load_file('ckpts/model.safetensors')
     #load conf weights from pi3_weight
     conf_decoder_weight = {

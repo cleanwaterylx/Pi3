@@ -1,0 +1,71 @@
+# @package _global_
+
+train_dataset:
+    length: 10000000         # dummy
+
+    weights: 
+        VisymScenes: 20000
+        Doppelgangers: 20000
+
+    VisymScenes:
+        _target_: datasets.visymscenes_dataset.VisymScenesDataset
+        data_root: /home/disk8/dopp_data/visymscenes
+        z_far: 80
+        frame_num: 8
+        aug_crop: 16      # Data Augmentation with random
+        transform:
+            _partial_: true
+            _target_: datasets.base.transforms.JitterJpegLossBlurring    # Data Augmentation with random
+            # _target_: datasets.base.transforms.ImgToTensor
+        aug_focal: 0.9    # Data Augmentation with random
+        mode: 'train'
+    Doppelgangers:
+        _target_: datasets.doppelgangers_dataset.DoppelgangersDataset
+        data_root: /home/disk8/dopp_data
+        z_far: 80
+        frame_num: 8
+        aug_crop: 16      # Data Augmentation with random
+        transform:
+            _partial_: true
+            _target_: datasets.base.transforms.JitterJpegLossBlurring    # Data Augmentation with random
+            # _target_: datasets.base.transforms.ImgToTensor
+        aug_focal: 0.9    # Data Augmentation with random
+        mode: 'train'
+    
+
+
+train_dataloader:
+    drop_last: True
+    shuffle: True
+
+test_dataset:
+    weights: 
+        VisymScenes: 2000
+        Doppelgangers: 2000
+
+    VisymScenes:
+        _target_: datasets.visymscenes_dataset.VisymScenesDataset
+        data_root: /home/disk8/dopp_data/visymscenes
+        z_far: 80
+        frame_num: 8
+        resolution:
+            - [378, 672]
+        transform:
+            _partial_: true
+            _target_: datasets.base.transforms.ImgToTensor
+        mode: 'test'
+    Doppelgangers:
+        _target_: datasets.doppelgangers_dataset.DoppelgangersDataset
+        data_root: /home/disk8/dopp_data
+        z_far: 80
+        frame_num: 8
+        resolution:
+            - [378, 672]
+        transform:
+            _partial_: true
+            _target_: datasets.base.transforms.ImgToTensor
+        mode: 'test'
+
+test_dataloader:
+    drop_last: False
+    shuffle: False
